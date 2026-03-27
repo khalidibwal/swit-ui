@@ -20,32 +20,52 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat }) {
   const [lastDirection, setLastDirection] = useState(null);
   const [matchedUser, setMatchedUser] = useState(null);
 
-  const fetchUsers = () => {
+  const fetchUsers = async () => {
     setLoading(true);
-    const q = query(collection(db, 'users'), limit(20));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(user => user.id !== currentUser.id);
+    try {
+      // 1. Ambil ID user yang sudah di-swipe oleh currentUser
+      const swipesRef = collection(db, 'swipes');
+      const swipesQuery = query(swipesRef, where('senderId', '==', currentUser.id));
+      const swipesSnapshot = await getDocs(swipesQuery);
+      const swipedUserIds = swipesSnapshot.docs.map(doc => doc.data().targetUserId);
       
-      if (usersData.length === 0) {
-        setUsers(DUMMY_USERS);
-      } else {
-        setUsers(usersData);
-      }
-      setLoading(false);
-    }, (error) => {
-      setUsers(DUMMY_USERS);
-      setLoading(false);
-    });
+      // 2. Ambil semua user dari Firestore
+      const usersRef = collection(db, 'users');
+      const usersQuery = query(usersRef, limit(50)); // Ambil lebih banyak untuk difilter
+      
+      const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+        const usersData = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(user => 
+            user.id !== currentUser.id && // Bukan diri sendiri
+            !swipedUserIds.includes(user.id) // Belum pernah di-swipe
+          );
+        
+        if (usersData.length === 0 && swipedUserIds.length === 0) {
+          // Jika benar-benar kosong dan belum ada swipe, tampilkan dummy
+          setUsers(DUMMY_USERS);
+        } else {
+          setUsers(usersData);
+        }
+        setLoading(false);
+      }, (error) => {
+        console.error("Error onSnapshot users:", error);
+        setLoading(false);
+      });
 
-    return unsubscribe;
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error fetching users/swipes:", error);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    const unsubscribe = fetchUsers();
-    return () => unsubscribe();
+    let unsubscribe;
+    fetchUsers().then(unsub => {
+      unsubscribe = unsub;
+    });
+    return () => unsubscribe && unsubscribe();
   }, [currentUser.id]);
 
   const swiped = async (direction, swipedUser) => {
