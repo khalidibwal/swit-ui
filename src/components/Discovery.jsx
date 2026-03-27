@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
-import { X, Heart, Star, RotateCcw, Info, EyeOff, MessageCircle } from 'lucide-react';
+import { X, Heart, Star, RotateCcw, Info, EyeOff, MessageCircle, ShieldCheck } from 'lucide-react';
 import { collection, onSnapshot, query, limit, addDoc, serverTimestamp, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -192,7 +192,8 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat }) {
         {users.length === 0 && (
           <div className="flex flex-col items-center justify-center text-center p-10">
             <div className="w-24 h-24 bg-slate-800 rounded-3xl flex items-center justify-center mb-6 shadow-2xl border border-slate-700"><RotateCcw className="text-emerald-400" size={40} /></div>
-            <h3 className="text-xl font-bold text-slate-100">Habis Terjual!</h3>
+            <h3 className="text-xl font-bold text-slate-100">Belum Ada Pengguna Baru!</h3>
+            <p className="text-slate-400 mt-2">Coba segarkan halaman untuk melihat lebih banyak.</p>
             <button onClick={handleRefresh} className="mt-8 px-8 py-3 bg-emerald-500 text-white font-bold rounded-2xl">Refresh</button>
           </div>
         )}
@@ -220,7 +221,15 @@ function SwipeCard({ user, onSwipe, isTop, isPrivacyMode, forcedDirection }) {
       <div className="w-full h-full rounded-[32px] overflow-hidden relative tinder-card-shadow bg-slate-800 border border-slate-700">
         <img src={user.image} alt={user.name} className={`w-full h-full object-cover pointer-events-none select-none transition-all duration-700 ${isPrivacyMode ? 'blur-3xl scale-125' : 'blur-0 scale-100'}`} />
         <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-slate-950 via-slate-900/60 to-transparent text-white">
-          <div className="flex items-baseline gap-3"><h2 className={`text-3xl font-black tracking-tight transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>{isPrivacyMode ? 'HIDDEN' : user.name}</h2><span className={`text-2xl font-light text-emerald-400 transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>{isPrivacyMode ? '??' : user.age}</span></div>
+          <div className="flex items-center gap-3">
+            <h2 className={`text-3xl font-black tracking-tight transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>{isPrivacyMode ? 'HIDDEN' : user.name}</h2>
+            {!isPrivacyMode && user.isVerified && (
+              <div className="bg-emerald-500 text-white p-1 rounded-lg shadow-lg">
+                <ShieldCheck size={16} />
+              </div>
+            )}
+            <span className={`text-2xl font-light text-emerald-400 transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>{isPrivacyMode ? '??' : user.age}</span>
+          </div>
           <p className={`mt-3 text-slate-200 text-sm font-medium leading-relaxed line-clamp-2 opacity-90 transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>{user.bio}</p>
         </div>
         <motion.div style={{ opacity: useTransform(x, [0, 100], [0, 1]) }} className="absolute top-12 left-12 border-4 border-emerald-400 text-emerald-400 font-black px-6 py-2 rounded-2xl rotate-[-20deg] uppercase text-4xl pointer-events-none tracking-tighter">LIKE</motion.div>
