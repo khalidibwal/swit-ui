@@ -9,7 +9,7 @@ function cn(...inputs) {
 export default function BottomNav({ activeTab, setActiveTab }) {
   const tabs = [
     { id: 'discovery', label: 'Discovery', isLogo: true },
-    { id: 'likes', icon: Heart, label: 'Likes' },
+    { id: 'likes', icon: Heart, label: 'Gold' },
     { id: 'messages', icon: MessageCircle, label: 'Messages' },
     { id: 'profile', icon: User, label: 'Profile' },
   ];

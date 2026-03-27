@@ -4,11 +4,12 @@ import Messages from './components/Messages.jsx';
 import Profile from './components/Profile.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import ChatRoom from './components/ChatRoom.jsx';
+import GoldUpgrade from './components/GoldUpgrade.jsx';
 
 // Akun Testing
 const TEST_ACCOUNTS = {
-  JESSICA: { id: 'jessica_user', name: 'Jessica', age: 22, image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300' },
-  ANDINI: { id: 'andini_user', name: 'Andini', age: 23, image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=300' }
+  JESSICA: { id: 'jessica_user', name: 'Jessica', age: 22, image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=300', isGold: false },
+  ANDINI: { id: 'andini_user', name: 'Andini', age: 23, image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=300', isGold: false }
 };
 
 function App() {
@@ -54,19 +55,16 @@ function App() {
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
             testAccounts={TEST_ACCOUNTS}
+            setActiveTab={setActiveTab}
           />
         );
       case 'likes':
         return (
-          <div className="flex flex-col items-center justify-center h-full text-center px-10 bg-[#0f172a]">
-            <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20">
-              <span className="text-4xl">❤️</span>
-            </div>
-            <h1 className="text-2xl font-black text-white">Upgrade ke Gold</h1>
-            <p className="text-slate-400 mt-4 leading-relaxed">
-              Dapatkan lebih banyak match dengan SwitUI Gold!
-            </p>
-          </div>
+          <GoldUpgrade 
+            currentUser={currentUser} 
+            setCurrentUser={setCurrentUser}
+            onBack={() => setActiveTab('discovery')} 
+          />
         );
       default:
         return <Discovery isPrivacyMode={isPrivacyMode} currentUser={currentUser} />;
