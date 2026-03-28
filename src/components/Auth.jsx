@@ -67,7 +67,7 @@ export default function Auth({ onAuthComplete }) {
       // Cek apakah user sudah ada di Firestore
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       
-      if (userDoc.exists() && userDoc.data().hobbies?.length >= 3 && userDoc.data().isVerified) {
+      if (userDoc.exists() && userDoc.data().hobbies?.length >= 3 && userDoc.data().profilePhotos?.length >= 2) {
         // Jika sudah ada dan lengkap, langsung masuk
         onAuthComplete(userDoc.data());
       } else {
@@ -88,13 +88,6 @@ export default function Auth({ onAuthComplete }) {
     }
   };
 
-  const applyExistingProfileToState = (userData) => {
-    setName(userData?.name || '');
-    setSelectedHobbies(Array.isArray(userData?.hobbies) ? userData.hobbies : []);
-    setProfilePhotos(Array.isArray(userData?.profilePhotos) ? userData.profilePhotos : []);
-    setVerificationPhoto(userData?.verificationPhoto || null);
-  };
-
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail || password.length < 6) {
@@ -104,7 +97,6 @@ export default function Auth({ onAuthComplete }) {
 
     setLoading(true);
     setError(null);
-
     try {
       const result =
         emailMode === 'register'
@@ -112,32 +104,16 @@ export default function Auth({ onAuthComplete }) {
           : await signInWithEmailAndPassword(auth, trimmedEmail, password);
 
       const user = result.user;
-
       const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        if (data.hobbies?.length >= 3 && data.isVerified) {
-          onAuthComplete(data);
-          return;
-        }
 
-        applyExistingProfileToState(data);
-        setTempUser(user);
-
-        const hasHobbies = Array.isArray(data.hobbies) && data.hobbies.length >= 3;
-        const hasPhotos = Array.isArray(data.profilePhotos) && data.profilePhotos.length >= 2;
-        const hasVerification = Boolean(data.verificationPhoto);
-
-        if (!hasHobbies) setStep('onboarding');
-        else if (!hasPhotos) setStep('photos');
-        else if (!hasVerification) setStep('verification');
-        else setStep('verification');
+      if (userDoc.exists() && userDoc.data().hobbies?.length >= 3 && userDoc.data().profilePhotos?.length >= 2) {
+        onAuthComplete(userDoc.data());
       } else {
         setTempUser(user);
-        setName('');
-        setSelectedHobbies([]);
-        setProfilePhotos([]);
-        setVerificationPhoto(null);
+        setName(userDoc.exists() ? (userDoc.data().name || '') : '');
+        setSelectedHobbies(userDoc.exists() ? (userDoc.data().hobbies || []) : []);
+        setProfilePhotos(userDoc.exists() ? (userDoc.data().profilePhotos || []) : []);
+        setVerificationPhoto(userDoc.exists() ? (userDoc.data().verificationPhoto || null) : null);
         setStep('onboarding');
       }
     } catch (err) {
@@ -148,6 +124,7 @@ export default function Auth({ onAuthComplete }) {
       else if (err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-login-credentials') setError("Email atau password salah. Jika belum punya akun, pilih Daftar.");
       else if (err.code === 'auth/invalid-email') setError("Format email tidak valid.");
       else if (err.code === 'auth/weak-password') setError("Password terlalu lemah. Minimal 6 karakter.");
+      else if (err.code === 'auth/operation-not-allowed') setError("Email/Password belum diaktifkan di Firebase Console.");
       else setError("Gagal login dengan Email: " + err.message);
     } finally {
       setLoading(false);
@@ -170,6 +147,40 @@ export default function Auth({ onAuthComplete }) {
         isVerified: true, 
         createdAt: serverTimestamp(),
         image: profilePhotos[0], 
+        age: 20 + Math.floor(Math.random() * 10),
+        bio: `Hi! Saya ${name}, senang bertemu kamu.`
+      };
+
+      await setDoc(doc(db, 'users', tempUser.uid), userData);
+      onAuthComplete(userData);
+    } catch (err) {
+      console.error("Firestore error:", err);
+      setError("Gagal menyimpan profil: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkipVerification = async () => {
+    if (!tempUser) return;
+    if (name.trim().length < 2 || selectedHobbies.length < 3 || profilePhotos.length < 2) {
+      setError("Lengkapi nama, minimal 3 hobi, dan minimal 2 foto profil sebelum skip verifikasi.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const userData = {
+        id: tempUser.uid,
+        name: name,
+        email: tempUser.email,
+        hobbies: selectedHobbies,
+        profilePhotos: profilePhotos,
+        verificationPhoto: null,
+        isVerified: false,
+        createdAt: serverTimestamp(),
+        image: profilePhotos[0],
         age: 20 + Math.floor(Math.random() * 10),
         bio: `Hi! Saya ${name}, senang bertemu kamu.`
       };
@@ -229,7 +240,7 @@ export default function Auth({ onAuthComplete }) {
             <button
               onClick={() => {
                 setError(null);
-                setShowEmailAuth((v) => !v);
+                setShowEmailAuth(v => !v);
               }}
               disabled={loading}
               className="w-full py-4 bg-slate-800 border border-slate-700 text-white font-bold rounded-2xl shadow-xl hover:bg-slate-700 transition-all active:scale-95"
@@ -494,6 +505,14 @@ export default function Auth({ onAuthComplete }) {
                 ) : (
                   <>Selesaikan Profil <Sparkles size={18} /></>
                 )}
+              </button>
+
+              <button
+                onClick={handleSkipVerification}
+                disabled={loading}
+                className="w-full mt-3 py-4 bg-slate-800 border border-slate-700 disabled:opacity-50 text-slate-300 font-bold rounded-2xl transition-all active:scale-95 hover:bg-slate-700"
+              >
+                Lewati Verifikasi (Nanti Saja)
               </button>
             </div>
           </motion.div>
