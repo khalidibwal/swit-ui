@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Sparkles, ChevronRight, Check, Camera, Upload, Trash2, Plus, ShieldCheck } from 'lucide-react';
 import { auth, db } from '../firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 const HOBBIES_LIST = [
@@ -21,6 +21,10 @@ export default function Auth({ onAuthComplete }) {
   const [tempUser, setTempUser] = useState(null);
   const [profilePhotos, setProfilePhotos] = useState([]);
   const [verificationPhoto, setVerificationPhoto] = useState(null);
+  const [showEmailAuth, setShowEmailAuth] = useState(false);
+  const [emailMode, setEmailMode] = useState('login'); // login | register
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const profilePhotoInputRef = useRef(null);
   const verificationPhotoInputRef = useRef(null);
 
@@ -79,6 +83,72 @@ export default function Auth({ onAuthComplete }) {
       } else {
         setError("Gagal login dengan Google: " + err.message);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyExistingProfileToState = (userData) => {
+    setName(userData?.name || '');
+    setSelectedHobbies(Array.isArray(userData?.hobbies) ? userData.hobbies : []);
+    setProfilePhotos(Array.isArray(userData?.profilePhotos) ? userData.profilePhotos : []);
+    setVerificationPhoto(userData?.verificationPhoto || null);
+  };
+
+  const handleEmailAuth = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || password.length < 6) {
+      setError("Email wajib diisi dan password minimal 6 karakter.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result =
+        emailMode === 'register'
+          ? await createUserWithEmailAndPassword(auth, trimmedEmail, password)
+          : await signInWithEmailAndPassword(auth, trimmedEmail, password);
+
+      const user = result.user;
+
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        if (data.hobbies?.length >= 3 && data.isVerified) {
+          onAuthComplete(data);
+          return;
+        }
+
+        applyExistingProfileToState(data);
+        setTempUser(user);
+
+        const hasHobbies = Array.isArray(data.hobbies) && data.hobbies.length >= 3;
+        const hasPhotos = Array.isArray(data.profilePhotos) && data.profilePhotos.length >= 2;
+        const hasVerification = Boolean(data.verificationPhoto);
+
+        if (!hasHobbies) setStep('onboarding');
+        else if (!hasPhotos) setStep('photos');
+        else if (!hasVerification) setStep('verification');
+        else setStep('verification');
+      } else {
+        setTempUser(user);
+        setName('');
+        setSelectedHobbies([]);
+        setProfilePhotos([]);
+        setVerificationPhoto(null);
+        setStep('onboarding');
+      }
+    } catch (err) {
+      console.error("Email Auth error:", err);
+      if (err.code === 'auth/email-already-in-use') setError("Email sudah terdaftar. Silakan login.");
+      else if (err.code === 'auth/wrong-password') setError("Password salah.");
+      else if (err.code === 'auth/user-not-found') setError("Akun tidak ditemukan. Silakan daftar.");
+      else if (err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-login-credentials') setError("Email atau password salah. Jika belum punya akun, pilih Daftar.");
+      else if (err.code === 'auth/invalid-email') setError("Format email tidak valid.");
+      else if (err.code === 'auth/weak-password') setError("Password terlalu lemah. Minimal 6 karakter.");
+      else setError("Gagal login dengan Email: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -149,6 +219,89 @@ export default function Auth({ onAuthComplete }) {
                 </>
               )}
             </button>
+
+            <div className="w-full flex items-center gap-4 my-8">
+              <div className="flex-1 h-px bg-slate-800" />
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">atau</span>
+              <div className="flex-1 h-px bg-slate-800" />
+            </div>
+
+            <button
+              onClick={() => {
+                setError(null);
+                setShowEmailAuth((v) => !v);
+              }}
+              disabled={loading}
+              className="w-full py-4 bg-slate-800 border border-slate-700 text-white font-bold rounded-2xl shadow-xl hover:bg-slate-700 transition-all active:scale-95"
+            >
+              Lanjut dengan Email
+            </button>
+
+            {showEmailAuth && (
+              <div className="w-full mt-6 text-left">
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      setEmailMode('login');
+                    }}
+                    className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${emailMode === 'login' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-600'}`}
+                  >
+                    Login
+                  </button>
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      setEmailMode('register');
+                    }}
+                    className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${emailMode === 'register' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-600'}`}
+                  >
+                    Daftar
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-widest">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="nama@email.com"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-widest">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 text-xs font-medium leading-relaxed">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleEmailAuth}
+                    disabled={loading}
+                    className="w-full py-4 bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>{emailMode === 'register' ? 'Daftar & Lanjut' : 'Login & Lanjut'} <ChevronRight size={18} /></>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         ) : step === 'onboarding' ? (
           <motion.div 
