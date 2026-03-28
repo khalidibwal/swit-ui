@@ -74,14 +74,18 @@ export default function Auth({ onAuthComplete }) {
       }
     } catch (err) {
       console.error("Google Auth error:", err);
-      setError("Gagal login dengan Google: " + err.message);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError("Login dibatalkan oleh pengguna.");
+      } else {
+        setError("Gagal login dengan Google: " + err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleComplete = async () => {
-    if (!tempUser || profilePhotos.length < 2 || !verificationPhoto) return;
+    if (!tempUser || name.trim().length < 2 || selectedHobbies.length < 3 || profilePhotos.length < 2 || !verificationPhoto) return;
     
     setLoading(true);
     setError(null);
@@ -93,9 +97,9 @@ export default function Auth({ onAuthComplete }) {
         hobbies: selectedHobbies,
         profilePhotos: profilePhotos,
         verificationPhoto: verificationPhoto,
-        isVerified: true, // Untuk demo, langsung di-verify
+        isVerified: true, 
         createdAt: serverTimestamp(),
-        image: profilePhotos[0], // Gunakan foto pertama sebagai avatar utama
+        image: profilePhotos[0], 
         age: 20 + Math.floor(Math.random() * 10),
         bio: `Hi! Saya ${name}, senang bertemu kamu.`
       };

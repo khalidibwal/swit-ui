@@ -98,7 +98,7 @@ export default function ChatRoom({ chat, onBack, isPrivacyMode, currentUser }) {
               >
                 {msg.text}
                 <div className={`text-[9px] mt-1 opacity-60 text-right ${isMe ? 'text-white' : 'text-slate-400'}`}>
-                   {msg.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Sending...'}
+                   {msg.timestamp ? (msg.timestamp.toDate ? msg.timestamp.toDate() : new Date(msg.timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                 </div>
               </div>
             </div>

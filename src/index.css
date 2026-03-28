@@ -53,3 +53,27 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Fix for Midtrans Snap Modal on Mobile */
+#snap-container {
+  z-index: 999999 !important;
+}
+
+/* Force Midtrans Snap iframe to be centered and top-level */
+iframe#snap-midtrans, 
+.midtrans-snap-pay, 
+#midtrans-snap-container {
+  z-index: 999999 !important;
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  max-width: 100vw !important;
+}
+
+/* Ensure body doesn't scroll when Snap is open (if possible) */
+body.modal-open {
+  overflow: hidden !important;
+  position: fixed;
+  width: 100%;
+}

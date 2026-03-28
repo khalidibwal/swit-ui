@@ -19,10 +19,11 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    seedUsers();
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // Jalankan seed dengan ID user saat ini
+        seedUsers(user.uid);
+
         // Ambil data user dari firestore
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {
@@ -75,7 +76,7 @@ function App() {
           />
         );
       case 'messages':
-        return <Messages isPrivacyMode={isPrivacyMode} currentUser={currentUser} onChatClick={setSelectedChat} />;
+        return <Messages isPrivacyMode={isPrivacyMode} currentUser={currentUser} onChatClick={setSelectedChat} setActiveTab={setActiveTab} />;
       case 'profile':
         return (
           <Profile 

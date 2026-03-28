@@ -1,29 +1,25 @@
 import { useState, useEffect } from 'react';
-import { Search, EyeOff } from 'lucide-react';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { Search, EyeOff, Lock, Heart, Crown } from 'lucide-react';
+import { collection, onSnapshot, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-export default function Messages({ isPrivacyMode, currentUser, onChatClick }) {
+export default function Messages({ isPrivacyMode, currentUser, onChatClick, setActiveTab }) {
   const [chats, setChats] = useState([]);
+  const [likes, setLikes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!currentUser?.id) return;
 
-    console.log("Fetching chats for:", currentUser.id);
-
-    // Listener untuk Chat/Match asli di mana currentUser terlibat
-    // Kita coba hilangkan orderBy dulu untuk memastikan bukan masalah Index Firestore
-    const q = query(
+    // 1. Fetch Chats/Matches
+    const qChats = query(
       collection(db, 'chats'),
       where('userIds', 'array-contains', currentUser.id)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log("Snapshot received, docs count:", snapshot.docs.length);
+    const unsubChats = onSnapshot(qChats, (snapshot) => {
       const chatList = snapshot.docs.map(doc => {
         const data = doc.data();
-        // Cari info user lawan bicara
         const otherUserId = data.userIds?.find(id => id !== currentUser.id);
         const otherUser = data.users?.[otherUserId];
         
@@ -37,22 +33,58 @@ export default function Messages({ isPrivacyMode, currentUser, onChatClick }) {
         };
       });
       
-      // Urutkan manual di sisi client jika orderBy di Firestore bermasalah/belum ada index
-      const sortedChats = chatList.sort((a, b) => {
-        const timeA = a.lastMessageTime?.toMillis() || 0;
-        const timeB = b.lastMessageTime?.toMillis() || 0;
-        return timeB - timeA;
-      });
+      const getMillis = (time) => {
+        if (!time) return 0;
+        if (time.toMillis) return time.toMillis();
+        if (time instanceof Date) return time.getTime();
+        return new Date(time).getTime();
+      };
+      
+      setChats(chatList.sort((a, b) => getMillis(b.lastMessageTime) - getMillis(a.lastMessageTime)));
+    });
 
-      setChats(sortedChats);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore error in Messages.jsx:", error);
-      // Jika error 403 atau "failed-precondition", biasanya butuh Index
+    // 2. Fetch "Who Liked You" (Swipes where targetUserId is me and type is LIKE)
+    const qLikes = query(
+      collection(db, 'swipes'),
+      where('targetUserId', '==', currentUser.id),
+      where('type', '==', 'LIKE')
+    );
+
+    const unsubLikes = onSnapshot(qLikes, async (snapshot) => {
+      // Ambil ID sender yang menyukai kita
+      const likerIds = snapshot.docs.map(doc => doc.data().senderId);
+      
+      // Filter out ID yang sudah jadi match (sudah ada di chats)
+      // Caranya: cek di koleksi chats apakah ada match antara currentUser.id dan likerId
+      const matchesRef = collection(db, 'chats');
+      const matchesQuery = query(matchesRef, where('userIds', 'array-contains', currentUser.id));
+      const matchesSnapshot = await getDocs(matchesQuery);
+      const matchedUserIds = matchesSnapshot.docs.flatMap(doc => doc.data().userIds).filter(id => id !== currentUser.id);
+
+      const filteredLikerIds = likerIds.filter(id => !matchedUserIds.includes(id));
+
+      if (filteredLikerIds.length === 0) {
+        setLikes([]);
+        setLoading(false);
+        return;
+      }
+
+      // Ambil detail user untuk para likers
+      const likersData = await Promise.all(
+        filteredLikerIds.map(async (id) => {
+          const userDoc = await getDoc(doc(db, 'users', id));
+          return { id: userDoc.id, ...userDoc.data() };
+        })
+      );
+
+      setLikes(likersData);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubChats();
+      unsubLikes();
+    };
   }, [currentUser.id]);
 
   return (
@@ -83,9 +115,71 @@ export default function Messages({ isPrivacyMode, currentUser, onChatClick }) {
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : (
-        <>
+        <div className="flex-1 overflow-y-auto no-scrollbar">
+          {/* Who Liked You Section */}
+          <div className="py-6">
+            <div className="px-6 flex justify-between items-center mb-4">
+              <h2 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Who Liked You</h2>
+              {likes.length > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg shadow-emerald-500/20">
+                  {likes.length} LIKES
+                </span>
+              )}
+            </div>
+            
+            <div className="relative">
+              <div className="flex gap-4 px-6 overflow-x-auto no-scrollbar">
+                {likes.length > 0 ? (
+                  likes.map((liker) => (
+                    <div 
+                      key={liker.id}
+                      className="flex-shrink-0 relative group"
+                      onClick={() => !currentUser.isGold && setActiveTab('likes')}
+                    >
+                      <div className="w-20 h-28 rounded-2xl overflow-hidden border border-slate-700 bg-slate-800">
+                        <img 
+                          src={liker.image} 
+                          className={`w-full h-full object-cover transition-all duration-500 ${!currentUser.isGold ? 'blur-md scale-110 grayscale brightness-50' : ''}`} 
+                          alt="Liker"
+                        />
+                        {!currentUser.isGold && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                            <Lock className="text-emerald-400" size={18} />
+                          </div>
+                        )}
+                      </div>
+                      {!currentUser.isGold && (
+                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow-lg">
+                          GOLD ONLY
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="w-full flex flex-col items-center justify-center py-4 bg-slate-800/30 rounded-3xl border border-dashed border-slate-700 mx-6">
+                    <Heart className="text-slate-600 mb-2" size={24} />
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Belum ada yang menyukai</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Gold Upgrade Overlay if not Gold */}
+              {likes.length > 0 && !currentUser.isGold && (
+                <div 
+                  onClick={() => setActiveTab('likes')}
+                  className="absolute inset-0 bg-emerald-500/5 backdrop-blur-[2px] flex items-center justify-center cursor-pointer group"
+                >
+                  <div className="bg-slate-900/90 border border-emerald-500/30 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2 group-hover:scale-105 transition-transform">
+                    <Crown size={16} className="text-amber-400" fill="currentColor" />
+                    <span className="text-[10px] font-black text-white uppercase tracking-wider">Upgrade to See</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* New Matches (Horizontal) */}
-          <div className="py-8">
+          <div className="py-6">
             <h2 className="px-6 text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-4">New Matches</h2>
             <div className="flex gap-5 px-6 overflow-x-auto no-scrollbar pb-2">
               {chats.length > 0 ? chats.map((chat) => (
@@ -159,7 +253,7 @@ export default function Messages({ isPrivacyMode, currentUser, onChatClick }) {
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
