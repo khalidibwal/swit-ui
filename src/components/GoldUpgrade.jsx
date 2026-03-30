@@ -50,10 +50,10 @@ export default function GoldUpgrade({ currentUser, setCurrentUser, onBack }) {
       // 1. Panggil Netlify Function (Bisa berjalan di Local & Netlify Production)
       console.log("Meminta Snap Token dari Netlify Function...");
       
-      // Jika di localhost dan server.cjs nyala, gunakan 3001. 
-      // Jika di Netlify, gunakan /.netlify/functions/midtrans-payment
+      // Dev: gunakan proxy Vite ke server.cjs (menghindari CORS)
+      // Prod (Netlify): gunakan Netlify Function
       const apiUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:3001/api/payment' 
+        ? '/api/payment' 
         : '/.netlify/functions/midtrans-payment';
 
       const response = await fetch(apiUrl, {
@@ -69,12 +69,18 @@ export default function GoldUpgrade({ currentUser, setCurrentUser, onBack }) {
         })
       });
 
+      const ct = response.headers.get('content-type') || '';
+      const rawBody = await response.text();
+      let data = null;
+      try { data = ct.includes('application/json') ? JSON.parse(rawBody) : JSON.parse(rawBody); } catch (_) {}
+
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Gagal menghubungi server pembayaran.");
+        const msg = (data && (data.error || data.message)) || rawBody || "Gagal menghubungi server pembayaran.";
+        throw new Error(msg);
       }
 
-      const { token } = await response.json();
+      const token = data && data.token;
+      if (!token) throw new Error("Token pembayaran tidak ditemukan dari server.");
       console.log("Snap Token berhasil didapat:", token);
       
       if (window.snap) {
@@ -111,7 +117,12 @@ export default function GoldUpgrade({ currentUser, setCurrentUser, onBack }) {
 
     } catch (err) {
       console.error("Payment Process Error:", err);
-      setError(err.message || "Gagal memproses pembayaran. Pastikan 'node server.cjs' sudah dijalankan.");
+      const message = typeof err?.message === 'string' ? err.message : '';
+      if (err instanceof TypeError && message.toLowerCase().includes('failed to fetch')) {
+        setError("Gagal menghubungi server pembayaran. Pastikan 'node server.cjs' berjalan di port 3001, lalu jalankan ulang 'npm run dev'.");
+      } else {
+        setError(message || "Gagal memproses pembayaran. Pastikan server pembayaran sudah berjalan.");
+      }
       setIsProcessing(false);
     }
   };

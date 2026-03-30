@@ -1,4 +1,4 @@
-import { Settings, Camera, Shield, HelpCircle, ChevronRight, LogOut, Eye, EyeOff, Database, Loader2, UserCircle, Edit3, Check, X, Crown, Sparkles, ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import { Settings, Camera, Shield, HelpCircle, ChevronRight, LogOut, Eye, EyeOff, Database, Loader2, UserCircle, Edit3, Check, X, Crown, Sparkles, ShieldCheck, Image as ImageIcon, Plus } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { collection, doc, setDoc, serverTimestamp, deleteDoc, getDocs, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -10,7 +10,9 @@ export default function Profile({ isPrivacyMode, setIsPrivacyMode, currentUser, 
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ ...currentUser });
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   const handleLogout = async () => {
     try {
@@ -55,6 +57,83 @@ export default function Profile({ isPrivacyMode, setIsPrivacyMode, currentUser, 
     }
   };
 
+  const fileToCompressedDataUrl = async (file) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    await new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('image_load_failed'));
+      img.src = objectUrl;
+    });
+
+    const maxSize = 1024;
+    const ratio = Math.min(1, maxSize / Math.max(img.width, img.height));
+    const width = Math.round(img.width * ratio);
+    const height = Math.round(img.height * ratio);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas_not_supported');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    URL.revokeObjectURL(objectUrl);
+
+    return canvas.toDataURL('image/jpeg', 0.75);
+  };
+
+  const handleAddGalleryPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSeedStatus('');
+    setIsUploadingPhoto(true);
+    try {
+      const nextPhoto = await fileToCompressedDataUrl(file);
+      const existing = Array.isArray(currentUser.profilePhotos) ? currentUser.profilePhotos : [];
+      if (existing.length >= 6) {
+        setSeedStatus('Maksimal 6 foto.');
+        return;
+      }
+
+      const nextPhotos = [...existing, nextPhoto];
+      const userDocRef = doc(db, 'users', currentUser.id);
+      await setDoc(userDocRef, { profilePhotos: nextPhotos, updatedAt: serverTimestamp() }, { merge: true });
+      setCurrentUser(prev => ({ ...prev, profilePhotos: nextPhotos }));
+      if (isEditing) setEditData(prev => ({ ...prev, profilePhotos: nextPhotos }));
+      setSeedStatus('Foto berhasil ditambahkan!');
+      setTimeout(() => setSeedStatus(''), 3000);
+    } catch (error) {
+      console.error("Add Gallery Photo Error:", error);
+      setSeedStatus('Gagal menambahkan foto.');
+    } finally {
+      setIsUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveGalleryPhoto = async (index) => {
+    const existing = Array.isArray(editData.profilePhotos) ? editData.profilePhotos : [];
+    const nextPhotos = existing.filter((_, i) => i !== index);
+    setEditData(prev => ({ ...prev, profilePhotos: nextPhotos }));
+
+    setIsSaving(true);
+    try {
+      const userDocRef = doc(db, 'users', currentUser.id);
+      await setDoc(userDocRef, { profilePhotos: nextPhotos, updatedAt: serverTimestamp() }, { merge: true });
+      setCurrentUser(prev => ({ ...prev, profilePhotos: nextPhotos }));
+      setSeedStatus('Foto berhasil dihapus!');
+      setTimeout(() => setSeedStatus(''), 3000);
+    } catch (error) {
+      console.error("Remove Gallery Photo Error:", error);
+      setSeedStatus('Gagal menghapus foto.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const saveProfile = async () => {
     setIsSaving(true);
     try {
@@ -64,6 +143,7 @@ export default function Profile({ isPrivacyMode, setIsPrivacyMode, currentUser, 
         age: parseInt(editData.age),
         bio: editData.bio,
         image: editData.image,
+        profilePhotos: editData.profilePhotos || [],
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -192,23 +272,50 @@ export default function Profile({ isPrivacyMode, setIsPrivacyMode, currentUser, 
       </div>
 
       {/* Profile Gallery */}
-      {currentUser.profilePhotos?.length > 0 && (
+      {(currentUser.profilePhotos?.length > 0 || isEditing) && (
         <div className="mt-4 px-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
               <ImageIcon size={14} className="text-emerald-400" /> Galeri Foto
             </h3>
             <span className="text-[10px] font-bold text-slate-600 bg-slate-800 px-2 py-1 rounded-lg">
-              {currentUser.profilePhotos.length} FOTO
+              {(isEditing ? (editData.profilePhotos?.length || 0) : (currentUser.profilePhotos?.length || 0))} FOTO
             </span>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
-            {currentUser.profilePhotos.map((photo, index) => (
-              <div key={index} className="flex-shrink-0 w-24 aspect-[3/4] rounded-2xl overflow-hidden border border-slate-800 shadow-md">
+            {(isEditing ? (editData.profilePhotos || []) : (currentUser.profilePhotos || [])).map((photo, index) => (
+              <div key={index} className="relative flex-shrink-0 w-24 aspect-[3/4] rounded-2xl overflow-hidden border border-slate-800 shadow-md">
                 <img src={photo} className="w-full h-full object-cover" alt={`Gallery ${index}`} />
+                {isEditing && (
+                  <button
+                    onClick={() => handleRemoveGalleryPhoto(index)}
+                    disabled={isSaving}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center disabled:opacity-50"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             ))}
+
+            {((isEditing ? (editData.profilePhotos?.length || 0) : (currentUser.profilePhotos?.length || 0)) < 6) && (
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                disabled={isUploadingPhoto || isSaving}
+                className="flex-shrink-0 w-24 aspect-[3/4] rounded-2xl border-2 border-dashed border-slate-700 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-emerald-400 disabled:opacity-50"
+              >
+                {isUploadingPhoto ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
+                <span className="text-[10px] font-black uppercase tracking-widest">Tambah</span>
+              </button>
+            )}
           </div>
+          <input
+            type="file"
+            ref={galleryInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={handleAddGalleryPhoto}
+          />
         </div>
       )}
 

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
-import { X, Heart, Star, RotateCcw, Info, EyeOff, MessageCircle, ShieldCheck, Crown, Zap, MapPin, Navigation, SlidersHorizontal } from 'lucide-react';
+import { X, Heart, Star, RotateCcw, Info, EyeOff, MessageCircle, ShieldCheck, Crown, Zap, MapPin, Navigation, SlidersHorizontal, ChevronUp, ChevronDown } from 'lucide-react';
 import { collection, onSnapshot, query, limit, addDoc, serverTimestamp, where, getDocs, doc, setDoc, updateDoc, increment, GeoPoint } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -102,10 +102,14 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat, setA
   const [matchedUser, setMatchedUser] = useState(null);
   const [swipeCount, setSwipeCount] = useState(0);
   const [showLimitReached, setShowLimitReached] = useState(false);
+  const [showInfoPopup, setShowInfoPopup] = useState(false);
   
   // Location States
   const [userLocation, setUserLocation] = useState(null);
   const [radius, setRadius] = useState(1); // Default 1km
+  const [radiusUi, setRadiusUi] = useState(1);
+  const [radiusLoading, setRadiusLoading] = useState(false);
+  const radiusTimeoutRef = useRef(null);
   const [showRadiusSlider, setShowRadiusSlider] = useState(false);
 
   const [isInjecting, setIsInjecting] = useState(false);
@@ -196,6 +200,27 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat, setA
     }
   }, [currentUser.dailySwipeCount]);
 
+  useEffect(() => {
+    setRadiusUi(radius);
+  }, [radius]);
+
+  useEffect(() => {
+    return () => {
+      if (radiusTimeoutRef.current) clearTimeout(radiusTimeoutRef.current);
+    };
+  }, []);
+
+  const scheduleRadiusApply = (nextRadius) => {
+    setRadiusUi(nextRadius);
+    setRadiusLoading(true);
+    if (radiusTimeoutRef.current) clearTimeout(radiusTimeoutRef.current);
+    radiusTimeoutRef.current = setTimeout(() => {
+      setRadius(nextRadius);
+      setRadiusLoading(false);
+      setShowRadiusSlider(false);
+    }, 2000);
+  };
+
   const fetchUsers = () => {
     setLoading(true);
     try {
@@ -270,7 +295,7 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat, setA
   }, [currentUser.id]); // Only refetch if user ID changes!
 
   const swiped = async (direction, swipedUser) => {
-    if (!swipedUser || isSwiping || swipedIds.includes(swipedUser.id)) return;
+    if (!swipedUser || isSwiping || radiusLoading || swipedIds.includes(swipedUser.id)) return;
 
     // 1. Validasi Limit Swipe (Hanya untuk non-Gold)
     if (!isGoldActive && swipeCount >= 30) {
@@ -445,34 +470,106 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat, setA
             <SlidersHorizontal size={20} />
           </button>
           {isPrivacyMode && <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400"><EyeOff size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Privacy On</span></div>}
-          <button className="text-slate-400 hover:text-emerald-400 transition-colors p-2 bg-slate-800 rounded-xl"><Info size={22} /></button>
+          <button onClick={() => setShowInfoPopup(true)} className="text-slate-400 hover:text-emerald-400 transition-colors p-2 bg-slate-800 rounded-xl"><Info size={22} /></button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showInfoPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[120] bg-black/60 backdrop-blur-[2px] flex items-start justify-center px-6 pt-24"
+            onClick={() => setShowInfoPopup(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-md bg-slate-900/90 border border-slate-700 rounded-3xl p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-white font-black uppercase tracking-widest text-xs">Info Jarak</h3>
+                  <p className="text-slate-300 text-sm mt-2 leading-relaxed">
+                    slide ke kanan atau kiri untuk menyesuaikan jarak pencarian
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400">
+                  <Info size={18} />
+                </div>
+              </div>
+              <button
+                onClick={() => setShowInfoPopup(false)}
+                className="mt-6 w-full py-4 bg-slate-800 border border-slate-700 text-slate-200 font-black uppercase tracking-widest rounded-2xl hover:bg-slate-700 transition-all active:scale-95"
+              >
+                Tutup
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Radius Slider Overlay */}
       <AnimatePresence>
         {showRadiusSlider && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className="absolute top-[72px] left-0 right-0 z-50 px-6 py-6 bg-[#1e293b] border-b border-slate-700 shadow-2xl"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[55] bg-black/40 backdrop-blur-[1px]"
+            onClick={() => setShowRadiusSlider(false)}
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                <Navigation size={14} /> Jarak Jangkauan
-              </h3>
-              <span className="text-sm font-black text-white bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
-                {radius} KM
-              </span>
-            </div>
-            <input 
-              type="range" min="1" max="1000" step="1" 
-              value={radius} 
-              onChange={(e) => setRadius(parseInt(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
-            <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
-              <span>Nearby (1km)</span>
-              <span>Maksimal (1000km)</span>
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+              className="absolute top-[72px] left-0 right-0 px-6 py-6 bg-[#1e293b] border-b border-slate-700 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                  <Navigation size={14} /> Jarak Jangkauan
+                </h3>
+                <div className="flex items-center gap-2">
+                  {radiusLoading && (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  )}
+                  <span className="text-sm font-black text-white bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
+                    {radiusUi} KM
+                  </span>
+                </div>
+              </div>
+              <input 
+                type="range" min="1" max="1000" step="1" 
+                value={radiusUi} 
+                onChange={(e) => scheduleRadiusApply(parseInt(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+              />
+              <div className="flex justify-between mt-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                <span>Nearby (1km)</span>
+                <span>Maksimal (1000km)</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {radiusLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[60] bg-black/40 backdrop-blur-[1px] flex items-center justify-center px-6"
+          >
+            <div className="bg-slate-900/80 border border-slate-700 rounded-3xl px-6 py-5 flex items-center gap-4 shadow-2xl">
+              <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+              <div>
+                <div className="text-white font-black uppercase tracking-widest text-xs">Memperbarui Jarak...</div>
+                <div className="text-slate-400 text-[11px] mt-1">Mencari user di radius {radiusUi} KM</div>
+              </div>
             </div>
           </motion.div>
         )}
@@ -533,19 +630,48 @@ export default function Discovery({ isPrivacyMode, currentUser, onGoToChat, setA
 
 function SwipeCard({ user, onSwipe, isTop, isPrivacyMode, forcedDirection }) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [showDetails, setShowDetails] = useState(false);
   const userImages = user.images && user.images.length > 0 ? user.images : [user.image];
+  const isDraggingRef = useRef(false);
   
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-100, 100], [-10, 10]);
   const opacity = useTransform(x, [-150, -100, 0, 100, 150], [0, 1, 1, 1, 0]);
   
+  useEffect(() => {
+    setCurrentPhotoIndex(0);
+    setShowDetails(false);
+  }, [user.id]);
+
   const handleDragEnd = (_, info) => { 
-    if (info.offset.x > 100) onSwipe('right'); 
-    else if (info.offset.x < -100) onSwipe('left'); 
+    const offsetX = info.offset.x;
+    const velocityX = info.velocity.x;
+
+    const offsetThreshold = 120;
+    const velocityThreshold = 700;
+
+    let direction = null;
+    if (Math.abs(offsetX) >= offsetThreshold) {
+      direction = offsetX > 0 ? 'right' : 'left';
+    } else if (Math.abs(velocityX) >= velocityThreshold) {
+      direction = velocityX > 0 ? 'right' : 'left';
+    }
+
+    if (direction) {
+      onSwipe(direction);
+    } else {
+      x.set(0);
+    }
+
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 0);
   };
 
   const handlePhotoNavigation = (e) => {
     if (!isTop) return;
+    if (isDraggingRef.current) return;
+    if (showDetails) return;
     
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -575,6 +701,7 @@ function SwipeCard({ user, onSwipe, isTop, isPrivacyMode, forcedDirection }) {
       style={{ x, rotate, opacity, zIndex: isTop ? 10 : 0 }} 
       drag={isTop ? "x" : false} 
       dragConstraints={{ left: 0, right: 0 }} 
+      onDragStart={() => { isDraggingRef.current = true; }}
       onDragEnd={handleDragEnd} 
       initial={{ scale: 0.9, opacity: 0, y: 20 }} 
       animate={{ scale: 1, opacity: 1, y: 0 }} 
@@ -582,7 +709,7 @@ function SwipeCard({ user, onSwipe, isTop, isPrivacyMode, forcedDirection }) {
       className="absolute w-full h-[520px] max-w-[400px] cursor-grab active:cursor-grabbing"
     >
       <div 
-        className="w-full h-full rounded-[32px] overflow-hidden relative tinder-card-shadow bg-slate-800 border border-slate-700"
+        className="w-full h-full rounded-[32px] overflow-hidden relative bg-slate-800 border border-slate-700"
         onClick={handlePhotoNavigation}
       >
         {/* Photo Indicators */}
@@ -591,7 +718,7 @@ function SwipeCard({ user, onSwipe, isTop, isPrivacyMode, forcedDirection }) {
             {userImages.map((_, idx) => (
               <div 
                 key={idx} 
-                className={`h-1 flex-1 rounded-full transition-all duration-300 ${idx === currentPhotoIndex ? 'bg-white shadow-sm' : 'bg-white/30'}`}
+                className={`h-1 flex-1 rounded-full transition-all duration-300 ${idx === currentPhotoIndex ? 'bg-white' : 'bg-white/30'}`}
               />
             ))}
           </div>
@@ -625,6 +752,54 @@ function SwipeCard({ user, onSwipe, isTop, isPrivacyMode, forcedDirection }) {
           </div>
           <p className={`mt-3 text-slate-200 text-sm font-medium leading-relaxed line-clamp-2 opacity-90 transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>{user.bio}</p>
         </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isTop) return;
+            if (isDraggingRef.current) return;
+            setShowDetails((v) => !v);
+          }}
+          className="absolute bottom-6 right-6 z-30 w-12 h-12 rounded-2xl bg-slate-900/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center hover:bg-slate-900/90 transition-all active:scale-95"
+        >
+          {showDetails ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+        </button>
+
+        <AnimatePresence>
+          {showDetails && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.2 }}
+              className="absolute bottom-0 left-0 right-0 z-20 px-6 pt-5 pb-6 bg-slate-950/95 backdrop-blur-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={`transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'}`}>
+                <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Bio</div>
+                <div className="text-slate-200 text-sm leading-relaxed mt-2">{user.bio || '-'}</div>
+
+                <div className="mt-5 text-[10px] font-black text-emerald-400 uppercase tracking-widest">Hobi</div>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {(Array.isArray(user.hobbies) && user.hobbies.length > 0 ? user.hobbies : ['-']).map((h) => (
+                    <span key={h} className="px-3 py-2 bg-slate-900 border border-slate-800 rounded-full text-[11px] font-bold text-slate-200">
+                      {h}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-5 text-[10px] font-black text-emerald-400 uppercase tracking-widest">Galeri</div>
+                <div className="flex gap-2 mt-3 overflow-x-auto no-scrollbar pb-1">
+                  {(Array.isArray(user.profilePhotos) && user.profilePhotos.length > 0 ? user.profilePhotos : userImages).map((photo, idx) => (
+                    <div key={idx} className="flex-shrink-0 w-16 aspect-[3/4] rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                      <img src={photo} alt={`Gallery ${idx}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         <motion.div style={{ opacity: useTransform(x, [0, 100], [0, 1]) }} className="absolute top-12 left-12 border-4 border-emerald-400 text-emerald-400 font-black px-6 py-2 rounded-2xl rotate-[-20deg] uppercase text-4xl pointer-events-none tracking-tighter">LIKE</motion.div>
         <motion.div style={{ opacity: useTransform(x, [0, -100], [0, 1]) }} className="absolute top-12 right-12 border-4 border-rose-500 text-rose-500 font-black px-6 py-2 rounded-2xl rotate-[20deg] uppercase text-4xl pointer-events-none tracking-tighter">NOPE</motion.div>
