@@ -14,15 +14,7 @@ import { getAuth } from "firebase/auth";
 // };
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyBEWFY7qXfLywkzAOThwZ3b3OEEbANAk24",
-  authDomain: "swit-apps.firebaseapp.com",
-  projectId: "swit-apps",
-  storageBucket: "swit-apps.firebasestorage.app",
-  messagingSenderId: "405955118304",
-  appId: "1:405955118304:web:12da59036c60c836347c85",
-  measurementId: "G-YVBMBR6QZK"
-};
+
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 
